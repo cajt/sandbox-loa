@@ -1,0 +1,16 @@
+<library>
+	<options>
+		<option name="::testbench" value ="false" />
+	</options>	
+
+	<modules>
+		<module>loa-hdl:hdlc</module>
+		<module>loa-hdl:io</module>
+		<module>loa-hdl:pwm</module>
+		<module>loa-hdl:motor_control</module>
+		<module>loa-hdl:uart</module>
+		<module>loa-hdl:reset_gen</module>
+		<module>loa-hdl:fifo_sync</module>
+		<module>loa-hdl:encoder</module>
+	</modules>
+</library>
