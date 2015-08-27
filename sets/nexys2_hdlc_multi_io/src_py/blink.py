@@ -1,7 +1,5 @@
 #!/usr/bin/env python 
 
-import serial
-import CrcMoose
 import time
 import sys 
 import hdlc_busmaster
