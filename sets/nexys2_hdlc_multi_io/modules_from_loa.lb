@@ -11,6 +11,7 @@
 		<module>loa-hdl:uart</module>
 		<module>loa-hdl:reset_gen</module>
 		<module>loa-hdl:fifo_sync</module>
-		<module>loa-hdl:encoder</module>
+		<module>loa-hdl:peripheral_register</module>
+		<module>loa-hdl:dds</module>
 	</modules>
 </library>

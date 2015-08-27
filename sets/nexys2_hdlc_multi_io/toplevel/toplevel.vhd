@@ -30,6 +30,7 @@ entity toplevel is
        rstx  : out std_logic;
        pwm1  : out std_logic;
        pwm1n : out std_logic;
+       dac   : out std_logic_vector(2 downto 0);
        led   : out std_logic_vector(7 downto 0);
        sw    : in  std_logic_vector(7 downto 0)
        );
@@ -51,6 +52,7 @@ architecture Behavioral of toplevel is
   signal master_to_bus    : busmaster_out_type := (addr => (others => '0'), data => (others => '0'), re => '0', we => '0');
   signal reg_to_master    : busdevice_out_type := (data => (others => '0'));
   signal pwm1_to_master   : busdevice_out_type := (data => (others => '0'));
+  signal dds_to_master    : busdevice_out_type := (data => (others => '0'));
 
   -- Connections components used for HDLC link
   signal master_to_enc        : hdlc_enc_in_type    := (data => (others => '0'), enable => '0');
@@ -58,6 +60,8 @@ architecture Behavioral of toplevel is
   signal fifo_to_uart_tx      : fifo_link_8bit_type := (data => (others => '0'), enable => '0', empty => '0');
   signal enc_busy             : std_logic           := '0';
   signal clk_rx_en, clk_tx_en : std_logic;
+
+  signal dds_out : std_logic_vector(15 downto 0);
 
   signal reg_out : std_logic_vector(15 downto 0);
   signal reg_in  : std_logic_vector(15 downto 0);
@@ -170,7 +174,9 @@ begin
   -- LOA Bus
   -- here we collect the data-outputs of the devices
   -----------------------------------------------------------------------------
-  bus_to_master.data <= reg_to_master.data or pwm1_to_master.data;
+  bus_to_master.data <= reg_to_master.data or
+                        pwm1_to_master.data or
+                        dds_to_master.data;
 
   -----------------------------------------------------------------------------
   -- Input & output periphery register 
@@ -208,6 +214,24 @@ begin
 
   pwm1  <= not pwm1_s;
   pwm1n <= not pwm1_s;
+
+  -----------------------------------------------------------------------------
+  -- DDS module
+  -----------------------------------------------------------------------------
+  dds_module_1 : entity work.dds_module
+    generic map (
+      BASE_ADDRESS => 16#400#,          -- has do be alligned, due to internal
+      -- bram
+      RESET_IMPL   => RESET_IMPL)
+    port map (
+      bus_o => dds_to_master,
+      bus_i => master_to_bus,
+      dout  => dds_out,
+      reset => reset,
+      clk   => clk);
+
+  dac(2 downto 0) <= dds_out(15 downto 13);
+
 
 end Behavioral;
 
