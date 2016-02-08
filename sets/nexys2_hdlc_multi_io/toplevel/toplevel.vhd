@@ -162,9 +162,9 @@ begin
       reset => reset,
       clk   => clk);
 
-  gen_addierer : for i in 0 to 15 generate
+  reg_map : for i in 0 to 15 generate
     pixels.pixel(i) <= pixels_regfile(i*2+1)(7 downto 0) & pixels_regfile(i*2);
-  end generate gen_addierer;
+  end generate reg_map;
 
   pixels.refresh <= '1';
 
