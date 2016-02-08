@@ -13,5 +13,6 @@
 		<module>loa-hdl:fifo_sync</module>
 		<module>loa-hdl:peripheral_register</module>
 		<module>loa-hdl:dds</module>
+		<module>loa-hdl:ws2812</module>
 	</modules>
 </library>
