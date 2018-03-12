@@ -22,47 +22,42 @@ use work.utils_pkg.all;
 use work.uart_pkg.all;
 use work.pwm_pkg.all;
 use work.pwm_module_pkg.all;
+use work.ws2812_pkg.all;
 
 entity toplevel is
   generic (RESET_IMPL : reset_type := sync);
-  port(clk   : in  std_logic;           -- 50MHz
-       rsrx  : in  std_logic;
-       rstx  : out std_logic;
-       pwm1  : out std_logic;
-       pwm1n : out std_logic;
-       led   : out std_logic_vector(7 downto 0);
-       sw    : in  std_logic_vector(7 downto 0)
+  port(clk    : in  std_logic;          -- 50MHz
+       rsrx   : in  std_logic;
+       rstx   : out std_logic;
+       pwm1   : out std_logic;
+       pwm1n  : out std_logic;
+       dac    : out std_logic_vector(2 downto 0);
+       led    : out std_logic_vector(7 downto 0);
+       sw     : in  std_logic_vector(7 downto 0);
+       ws2812 : out std_logic
        );
 end toplevel;
 
 architecture Behavioral of toplevel is
-  type fifo_link_8bit_type is record
-    data   : std_logic_vector(7 downto 0);
-    enable : std_logic;
-    empty  : std_logic;
-  end record;
+  signal reset          : std_logic;
+  signal bus_to_master  : busmaster_in_type  := (data => (others => '0'));
+  signal master_to_bus  : busmaster_out_type := (addr => (others => '0'), data => (others => '0'), re => '0', we => '0');
+  signal reg_to_master  : busdevice_out_type := (data => (others => '0'));
+  signal pwm1_to_master : busdevice_out_type := (data => (others => '0'));
+  signal dds_to_master  : busdevice_out_type := (data => (others => '0'));
+  signal ws_to_master   : busdevice_out_type := (data => (others => '0'));
 
-  signal reset            : std_logic;
-  signal bus_o            : busmaster_out_type;
-  signal bus_i            : busmaster_in_type;
-  signal rx_to_dec        : hdlc_dec_in_type   := (data => (others => '0'), enable => '0');
-  signal dec_to_busmaster : hdlc_dec_out_type  := (data => (others => '0'), enable => '0');
-  signal bus_to_master    : busmaster_in_type  := (data => (others => '0'));
-  signal master_to_bus    : busmaster_out_type := (addr => (others => '0'), data => (others => '0'), re => '0', we => '0');
-  signal reg_to_master    : busdevice_out_type := (data => (others => '0'));
-  signal pwm1_to_master   : busdevice_out_type := (data => (others => '0'));
-
-  -- Connections components used for HDLC link
-  signal master_to_enc        : hdlc_enc_in_type    := (data => (others => '0'), enable => '0');
-  signal enc_to_fifo          : hdlc_enc_out_type   := (data => (others => '0'), enable => '0');
-  signal fifo_to_uart_tx      : fifo_link_8bit_type := (data => (others => '0'), enable => '0', empty => '0');
-  signal enc_busy             : std_logic           := '0';
-  signal clk_rx_en, clk_tx_en : std_logic;
-
+  signal dds_out : std_logic_vector(15 downto 0);
   signal reg_out : std_logic_vector(15 downto 0);
   signal reg_in  : std_logic_vector(15 downto 0);
 
   signal pwm1_s : std_logic;
+
+  signal pixels_regfile   : reg_file_type(31 downto 0);
+  signal pixels           : ws2812_16x1_in_type;
+  signal ws2812_in        : ws2812_in_type;
+  signal ws2812_out       : ws2812_out_type;
+  signal ws2812_chain_out : ws2812_chain_out_type;
 
 begin
   -----------------------------------------------------------------------------
@@ -74,115 +69,40 @@ begin
       clk   => clk);
 
   -----------------------------------------------------------------------------
-  --  Baudrate Generator 
-  -----------------------------------------------------------------------------
-  baudrate_rx_gen_inst : entity work.clock_divider
-    generic map(DIV => 87)
-    port map(
-      clk       => clk,
-      clk_out_p => clk_rx_en);
-
-  baudrate_tx_gen_inst : entity work.clock_divider
-    generic map(DIV => 434)
-    port map(
-      clk       => clk,
-      clk_out_p => clk_tx_en);
-
-  -----------------------------------------------------------------------------
-  -- UART RX
-  -----------------------------------------------------------------------------
-  uart_rx_inst : entity work.uart_rx
-    generic map (RESET_IMPL => RESET_IMPL)
-    port map(
-      rxd_p     => rsrx,
-      disable_p => '0',
-      data_p    => rx_to_dec.data,
-      we_p      => rx_to_dec.enable,
-      error_p   => open,
-      full_p    => '0',
-      clk_rx_en => clk_rx_en,
-      reset     => reset,
-      clk       => clk);
-
-  -----------------------------------------------------------------------------
-  --  Decoder
-  -----------------------------------------------------------------------------
-  hdlc_dec_inst : entity work.hdlc_dec
-    port map(
-      din_p  => rx_to_dec,
-      dout_p => dec_to_busmaster,
-      clk    => clk);
-
-  -----------------------------------------------------------------------------
-  -- Busmaster
-  -----------------------------------------------------------------------------
-  bus_master_inst : entity work.hdlc_busmaster
-    port map(
-      din_p  => dec_to_busmaster,
-      dout_p => master_to_enc,
-      bus_o  => master_to_bus,
-      bus_i  => bus_to_master,
-      clk    => clk);
-
-  -----------------------------------------------------------------------------
-  -- Encoder
-  -----------------------------------------------------------------------------
-  hdlc_enc_inst : entity work.hdlc_enc
-    port map(
-      din_p  => master_to_enc,
-      dout_p => enc_to_fifo,
-      busy_p => open,
-      clk    => clk);
-
-  -----------------------------------------------------------------------------
-  -- Transmit FIFO
-  -----------------------------------------------------------------------------
-  tx_fifo_inst : entity work.fifo_sync
-    generic map(
-      data_width    => 8,
-      address_width => 5)
-    port map(
-      di    => enc_to_fifo.data,
-      wr    => enc_to_fifo.enable,
-      full  => open,
-      do    => fifo_to_uart_tx.data,
-      rd    => fifo_to_uart_tx.enable,
-      empty => fifo_to_uart_tx.empty,
-      valid => open,
-      clk   => clk);
-
-  -----------------------------------------------------------------------------
-  -- UART TX
-  -----------------------------------------------------------------------------
-  uart_tx_inst : entity work.uart_tx
-    generic map (RESET_IMPL => RESET_IMPL)
-    port map(
-      txd_p     => rstx,
-      busy_p    => open,
-      data_p    => fifo_to_uart_tx.data,
-      empty_p   => fifo_to_uart_tx.empty,
-      re_p      => fifo_to_uart_tx.enable,
-      clk_tx_en => clk_tx_en,
-      reset     => reset,
-      clk       => clk);
-
-  -----------------------------------------------------------------------------
-  -- LOA Bus
+  -- LOA Bus & HDLC Busmaster
   -- here we collect the data-outputs of the devices
   -----------------------------------------------------------------------------
-  bus_to_master.data <= reg_to_master.data or pwm1_to_master.data;
+  busmaster : entity work.hdlc_busmaster_with_support
+    generic map (
+      DIV_RX     => 87,
+      DIV_TX     => 434,
+      RESET_IMPL => RESET_IMPL)
+    port map (
+      rx    => rsrx,
+      tx    => rstx,
+      bus_o => master_to_bus,
+      bus_i => bus_to_master,
+      reset => reset,
+      clk   => clk);
+
+  bus_to_master.data <= reg_to_master.data or
+                        pwm1_to_master.data or
+                        dds_to_master.data or
+                        ws_to_master.data;
 
   -----------------------------------------------------------------------------
   -- Input & output periphery register 
   -----------------------------------------------------------------------------
   reg_inst : entity work.peripheral_register
     generic map(
-      BASE_ADDRESS => 16#0000#)
+      BASE_ADDRESS => 16#0000#,
+      RESET_IMPL   => RESET_IMPL)
     port map(
       dout_p => reg_out,
       din_p  => reg_in,
       bus_o  => reg_to_master,
       bus_i  => master_to_bus,
+      reset  => reset,
       clk    => clk);
 
   -----------------------------------------------------------------------------
@@ -208,6 +128,67 @@ begin
 
   pwm1  <= not pwm1_s;
   pwm1n <= not pwm1_s;
+
+  -----------------------------------------------------------------------------
+  -- DDS module
+  -----------------------------------------------------------------------------
+  dds_module_1 : entity work.dds_module
+    generic map (
+      BASE_ADDRESS => 16#400#,          -- has do be alligned, due to internal
+      -- bram
+      RESET_IMPL   => RESET_IMPL)
+    port map (
+      bus_o => dds_to_master,
+      bus_i => master_to_bus,
+      dout  => dds_out,
+      reset => reset,
+      clk   => clk);
+
+  dac(2 downto 0) <= dds_out(15 downto 13);
+
+  -----------------------------------------------------------------------------
+  -- WS2812 Driver (8 x 1)
+  -----------------------------------------------------------------------------
+  reg_file_1 : entity work.reg_file
+    generic map (
+      BASE_ADDRESS => 16#1000#,
+      REG_ADDR_BIT => 5,
+      RESET_IMPL   => RESET_IMPL)
+    port map (
+      bus_o => ws_to_master,
+      bus_i => master_to_bus,
+      reg_o => pixels_regfile,
+      reg_i => pixels_regfile,
+      reset => reset,
+      clk   => clk);
+
+  reg_map : for i in 0 to 15 generate
+    pixels.pixel(i) <= pixels_regfile(i*2+1)(7 downto 0) & pixels_regfile(i*2);
+  end generate reg_map;
+
+  pixels.refresh <= '1';
+
+  ws2812_16x1_1 : entity work.ws2812_16x1
+    generic map (
+      RESET_IMPL => RESET_IMPL)
+    port map (
+      pixels     => pixels,
+      ws2812_in  => ws2812_in,
+      ws2812_out => ws2812_out,
+      reset      => reset,
+      clk        => clk);
+
+  ws2812_1 : entity work.ws2812
+    generic map (
+      RESET_IMPL => RESET_IMPL)
+    port map (
+      ws2812_in        => ws2812_in,
+      ws2812_out       => ws2812_out,
+      ws2812_chain_out => ws2812_chain_out,
+      reset            => reset,
+      clk              => clk);
+
+  ws2812 <= ws2812_chain_out.d;
 
 end Behavioral;
 
