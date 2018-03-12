@@ -1,0 +1,14 @@
+<library>
+	<options>
+		<option name="::testbench" value ="true" />
+	</options>	
+
+	<modules>
+		<module>loa-hdl:hdlc</module>
+		<module>loa-hdl:io</module>
+		<module>loa-hdl:uart</module>
+		<module>loa-hdl:reset_gen</module>
+		<module>loa-hdl:fifo_sync</module>
+		<module>loa-hdl:spw_node</module>
+	</modules>
+</library>
