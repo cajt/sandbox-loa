@@ -1,9 +1,9 @@
 <library>
-	<options>
-		<option name="::testbench" value ="true" />
-	</options>	
-
-	<modules>
+  <options>
+    <option name="loa-hdl:hdlc:testbench">true</option>
+	<option name="loa-hdl:uart:testbench">true</option>
+  </options>	
+  <modules>
 		<module>loa-hdl:hdlc</module>
 		<module>loa-hdl:io</module>
 		<module>loa-hdl:uart</module>
